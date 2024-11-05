@@ -2,10 +2,11 @@ from flask import Flask,request,jsonify
 from database import db
 from models.user import User
 from flask_login import LoginManager, login_user, current_user, logout_user,login_required
+import bcrypt
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = "your_secret_key"
-app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///database.db"
+app.config['SQLALCHEMY_DATABASE_URI'] = "mysql+pymysql://root:admin123@127.0.0.1:3306/flask-crud"
 
 
 
@@ -33,7 +34,7 @@ def login():
         #login
         user = User.query.filter_by(username=username).first()#para acessar a base usando filter() (Pois não é uma chave primária), e usando first para retornar apenas um registro(o primeiro nome) e não uma lista
         #encontrei user? and...a senha do user é igual a senha q recebi?
-        if user and user.password == password:
+        if user and bcrypt.checkpw(str.encode(password), str.encode(user.password)):
             login_user(user)#AUTENTICAÇÃO DO USER
             print(current_user.is_authenticated)
             return jsonify({"message": "Autenticação realizada com sucesso"})
@@ -54,7 +55,8 @@ def create_user():
     password= data.get("password")
 
     if username and password:
-        user = User(username=username, password=password)
+        hashed_password = bcrypt.hashpw(str.encode(password), bcrypt.gensalt())
+        user = User(username=username, password=hashed_password, role='user')
         db.session.add(user)
         db.session.commit()
         return jsonify({"message": "Usuario cadastrado com sucesso"})
@@ -78,6 +80,8 @@ def update_user(id_user):
     data =request.json
     user = User.query.get(id_user)
 
+    if id_user != current_user.id and current_user.role=="user":
+        return jsonify({"message": "Operação não permitida"}), 403
     if user and data.get("password"):
         user.password = data.get("password")
         db.session.commit()#n é necessario sessio.add pois não será adicioonado nada, estamos apenas alterando
@@ -91,6 +95,8 @@ def update_user(id_user):
 def delete_user(id_user):
     user = User.query.get(id_user)
 
+    if current_user.role !='admin':
+        return jsonify({"message": "Operação não permitida"}), 403
     if id_user == current_user.id:
         return jsonify({"message": "Deleção não permitida"}), 403
     if user:
